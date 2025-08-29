@@ -22,7 +22,7 @@
             border: 2px solid #334155;
             position: relative;
             overflow: hidden;
-            background-color: #f3e9d2; /* Color base cremita */
+            background-color: #a7f3d0; /* Color base verde claro */
         }
         .grid-cell {
             width: 100%;
@@ -33,7 +33,7 @@
             position: relative; /* Necesario para las líneas */
         }
         .grass {
-             background-color: #f3e9d2; /* Color cremita */
+             background-color: #a7f3d0; /* Color verde claro */
              display: flex;
              align-items: center;
              justify-content: center;
@@ -83,7 +83,8 @@
             align-items: center;
             justify-content: center;
             font-size: clamp(1.2rem, 4vw, 1.8rem);
-            transition: top 0.2s ease-out, left 0.2s ease-out;
+            /* Transición más rápida para mayor fluidez */
+            transition: top 0.15s ease-out, left 0.15s ease-out;
             will-change: top, left;
             z-index: 10;
         }
@@ -229,7 +230,12 @@
                         if (isVertical) cell.classList.add('street-vertical');
                     } else {
                         cell.classList.add('grass');
-                        if (Math.random() < 0.25) cell.innerHTML = '🌳';
+                        const randomContent = Math.random();
+                        if (randomContent < 0.15) {
+                            cell.innerHTML = '🏡';
+                        } else if (randomContent < 0.30) {
+                            cell.innerHTML = '🌳';
+                        }
                     }
                     board.appendChild(cell);
                 }
@@ -371,6 +377,20 @@
 
         // --- Game Logic & Loop ---
         let isMoving = false;
+        
+        function isAtIntersection(x, y) {
+            let streetNeighbors = 0;
+            const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+            for (const [dx, dy] of directions) {
+                const nx = x + dx;
+                const ny = y + dy;
+                if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && map[ny][nx] === 1) {
+                    streetNeighbors++;
+                }
+            }
+            return streetNeighbors > 2;
+        }
+
         function moveTruck(dx, dy) {
             if (isMoving) return;
 
@@ -384,10 +404,16 @@
             const newY = truck.y + dy;
             if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize && map[newY][newX] === 1) {
                 if (!firstMoveMade) firstMoveMade = true;
+                
+                isMoving = true;
+                
+                const atIntersection = isAtIntersection(truck.x, truck.y);
+                const cooldown = atIntersection ? 250 : 150; // Más lento en intersecciones
+                
                 truck.x = newX;
                 truck.y = newY;
-                isMoving = true;
-                setTimeout(() => { isMoving = false; }, 200); // Cooldown to match transition
+                
+                setTimeout(() => { isMoving = false; }, cooldown);
                 checkCollisions();
                 render();
             }
