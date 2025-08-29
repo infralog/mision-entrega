@@ -2,14 +2,14 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Misión Entrega: El Juego del Camioncito</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            touch-action: none;
+            touch-action: none; /* Previene zoom y scroll en la página entera */
         }
         .game-board {
             display: grid;
@@ -83,8 +83,7 @@
             align-items: center;
             justify-content: center;
             font-size: clamp(1.2rem, 4vw, 1.8rem);
-            /* Transición ajustada para un movimiento más fluido */
-            transition: top 0.38s linear, left 0.38s linear;
+            transition: top 0.2s ease-out, left 0.2s ease-out;
             will-change: top, left;
             z-index: 10;
         }
@@ -98,27 +97,31 @@
         #truck.has-package .package-on-board {
             opacity: 1;
         }
-        .control-button {
-            width: 60px;
-            height: 60px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: #3b82f6;
-            color: white;
-            border-radius: 9999px;
-            font-size: 2rem;
-            cursor: pointer;
-            user-select: none;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        .control-button:active {
-            transform: scale(0.95);
-            background-color: #2563eb;
-        }
         #message-box {
             transition: opacity 0.5s, transform 0.5s;
             z-index: 20;
+        }
+        #joystick-container {
+            width: 120px;
+            height: 120px;
+            position: relative;
+        }
+        #joystick-base {
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+        }
+        #joystick-knob {
+            width: 60px;
+            height: 60px;
+            background-color: #3b82f6;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s;
         }
     </style>
 </head>
@@ -164,10 +167,10 @@
                 </div>
             </div>
 
-            <!-- Mobile Controls -->
-            <div class="grid grid-cols-3 gap-2 mt-4">
-                <div></div> <div id="up-button" class="control-button">↑</div> <div></div>
-                <div id="left-button" class="control-button">←</div> <div id="down-button" class="control-button">↓</div> <div id="right-button" class="control-button">→</div>
+            <!-- Joystick Controls -->
+            <div id="joystick-container" class="mt-4">
+                <div id="joystick-base"></div>
+                <div id="joystick-knob"></div>
             </div>
         </div>
     </main>
@@ -181,7 +184,6 @@
         const timerContainer = document.getElementById('timer-container');
         const messageBox = document.getElementById('message-box');
         const messageText = document.getElementById('message-text');
-        const upButton = document.getElementById('up-button'), downButton = document.getElementById('down-button'), leftButton = document.getElementById('left-button'), rightButton = document.getElementById('right-button');
 
         // Game settings
         const gridSize = 12;
@@ -368,8 +370,11 @@
         }
 
         // --- Game Logic & Loop ---
+        let isMoving = false;
         function moveTruck(dx, dy) {
-            if (!gameActive && !timerInterval) { // Inicia el juego con el primer movimiento
+            if (isMoving) return;
+
+            if (!gameActive && !timerInterval) {
                 gameActive = true;
                 timerInterval = setInterval(updateTimer, 1000);
             }
@@ -381,6 +386,8 @@
                 if (!firstMoveMade) firstMoveMade = true;
                 truck.x = newX;
                 truck.y = newY;
+                isMoving = true;
+                setTimeout(() => { isMoving = false; }, 200); // Cooldown to match transition
                 checkCollisions();
                 render();
             }
@@ -507,10 +514,63 @@
         });
 
         timerContainer.addEventListener('click', changeTime);
-        upButton.addEventListener('click', () => moveTruck(0, -1));
-        downButton.addEventListener('click', () => moveTruck(0, 1));
-        leftButton.addEventListener('click', () => moveTruck(-1, 0));
-        rightButton.addEventListener('click', () => moveTruck(1, 0));
+        
+        // --- Joystick Controls Logic ---
+        const joystickContainer = document.getElementById('joystick-container');
+        const joystickKnob = document.getElementById('joystick-knob');
+        let joystickActive = false;
+        let joystickStartX, joystickStartY;
+        const baseRect = joystickContainer.getBoundingClientRect();
+        const baseRadius = baseRect.width / 2;
+        const knobRadius = joystickKnob.getBoundingClientRect().width / 2;
+        const maxKnobOffset = baseRadius - knobRadius;
+
+        function handleJoystickMove(e) {
+            if (!joystickActive) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            let dx = touch.clientX - joystickStartX;
+            let dy = touch.clientY - joystickStartY;
+            
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > maxKnobOffset) {
+                dx = (dx / distance) * maxKnobOffset;
+                dy = (dy / distance) * maxKnobOffset;
+            }
+            
+            joystickKnob.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
+            
+            const angle = Math.atan2(dy, dx);
+            const threshold = 0.5; // Deadzone
+
+            if (distance > baseRadius * 0.2) { // Only move if joystick is pushed enough
+                 if (Math.abs(dx) > Math.abs(dy)) {
+                    if (dx > 0) moveTruck(1, 0);
+                    else moveTruck(-1, 0);
+                } else {
+                    if (dy > 0) moveTruck(0, 1);
+                    else moveTruck(0, -1);
+                }
+            }
+        }
+        
+        joystickContainer.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            const rect = joystickContainer.getBoundingClientRect();
+            joystickStartX = rect.left + rect.width / 2;
+            joystickStartY = rect.top + rect.height / 2;
+            joystickActive = true;
+            handleJoystickMove(e);
+        }, { passive: false });
+
+        joystickContainer.addEventListener('touchmove', handleJoystickMove, { passive: false });
+
+        joystickContainer.addEventListener('touchend', () => {
+            joystickActive = false;
+            joystickKnob.style.transform = 'translate(-50%, -50%)';
+        });
+
 
         // --- Initial Load ---
         loadLevel();
@@ -518,5 +578,3 @@
     </script>
 </body>
 </html>
-
-
