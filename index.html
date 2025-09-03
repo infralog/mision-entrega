@@ -407,9 +407,9 @@
             let streetNeighbors = 0;
             const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
             for (const [dx, dy] of directions) {
-                const nx = x + dx;
-                const ny = y + dy;
-                if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && map[ny][nx] === 1) {
+                const nx = (x + dx + gridSize) % gridSize;
+                const ny = (y + dy + gridSize) % gridSize;
+                if (map[ny][nx] === 1) {
                     streetNeighbors++;
                 }
             }
@@ -598,11 +598,11 @@
         timerContainer.addEventListener('click', changeTime);
         difficultyContainer.addEventListener('click', changeDifficulty);
         
-        // --- Joystick Controls Logic ---
+        // --- Joystick Controls Logic (Improved for Responsiveness) ---
         const joystickContainer = document.getElementById('joystick-container');
         const joystickKnob = document.getElementById('joystick-knob');
         let joystickActive = false;
-        let joystickStartX, joystickStartY;
+        let joystickInitialX, joystickInitialY;
         const baseRect = joystickContainer.getBoundingClientRect();
         const baseRadius = baseRect.width / 2;
         const knobRadius = joystickKnob.getBoundingClientRect().width / 2;
@@ -612,22 +612,26 @@
             if (!joystickActive) return;
             e.preventDefault();
             const touch = e.touches[0];
-            let dx = touch.clientX - joystickStartX;
-            let dy = touch.clientY - joystickStartY;
+            
+            // Calculate movement delta from the initial touch point for accuracy
+            let dx = touch.clientX - joystickInitialX;
+            let dy = touch.clientY - joystickInitialY;
             
             const distance = Math.sqrt(dx * dx + dy * dy);
 
+            // Clamp the visual knob's position to stay within the base
+            let knobX = dx;
+            let knobY = dy;
             if (distance > maxKnobOffset) {
-                dx = (dx / distance) * maxKnobOffset;
-                dy = (dy / distance) * maxKnobOffset;
+                knobX = (dx / distance) * maxKnobOffset;
+                knobY = (dy / distance) * maxKnobOffset;
             }
             
-            joystickKnob.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
+            joystickKnob.style.transform = `translate(-50%, -50%) translate(${knobX}px, ${knobY}px)`;
             
-            const angle = Math.atan2(dy, dx);
-            const threshold = 0.5; // Deadzone
-
-            if (distance > baseRadius * 0.2) { // Only move if joystick is pushed enough
+            // Determine direction based on the full, unclamped delta for responsiveness
+            const deadzone = 20; // A 20px deadzone before movement registers
+            if (distance > deadzone) {
                  if (Math.abs(dx) > Math.abs(dy)) {
                     if (dx > 0) moveTruck(1, 0);
                     else moveTruck(-1, 0);
@@ -639,21 +643,21 @@
         }
         
         joystickContainer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
             const touch = e.touches[0];
-            const rect = joystickContainer.getBoundingClientRect();
-            joystickStartX = rect.left + rect.width / 2;
-            joystickStartY = rect.top + rect.height / 2;
+            // The reference point is the finger's starting position, not the center of the joystick
+            joystickInitialX = touch.clientX;
+            joystickInitialY = touch.clientY;
             joystickActive = true;
-            handleJoystickMove(e);
         }, { passive: false });
 
         joystickContainer.addEventListener('touchmove', handleJoystickMove, { passive: false });
 
         joystickContainer.addEventListener('touchend', () => {
             joystickActive = false;
+            // Reset the knob to the center visually
             joystickKnob.style.transform = 'translate(-50%, -50%)';
         });
-
 
         // --- Initial Load ---
         loadLevel();
@@ -661,3 +665,4 @@
     </script>
 </body>
 </html>
+
