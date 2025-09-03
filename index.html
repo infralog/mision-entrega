@@ -153,6 +153,10 @@
                     <h2 class="text-xs font-semibold text-slate-500">ENTREGAS</h2>
                     <p id="score" class="text-xl font-bold text-blue-600">0</p>
                 </div>
+                <div id="difficulty-container" class="bg-white p-1 rounded-lg shadow-md text-center w-20 cursor-pointer hover:bg-slate-100 transition-colors">
+                    <h2 class="text-xs font-semibold text-slate-500">DIFICULTAD</h2>
+                    <p id="difficulty" class="text-xl font-bold text-red-600">Alto</p>
+                </div>
             </div>
             <p class="text-slate-600 mt-2 text-center">Recoge el paquete 📦 y llévalo a la casa 🏠.</p>
         </div>
@@ -183,6 +187,8 @@
         const scoreElement = document.getElementById('score');
         const timerElement = document.getElementById('timer');
         const timerContainer = document.getElementById('timer-container');
+        const difficultyContainer = document.getElementById('difficulty-container');
+        const difficultyElement = document.getElementById('difficulty');
         const messageBox = document.getElementById('message-box');
         const messageText = document.getElementById('message-text');
 
@@ -190,6 +196,12 @@
         const gridSize = 12;
         const trafficCarCount = 5;
         const timeOptions = [20, 30, 40];
+        const difficultyLevels = [
+            { name: 'Bajo', speed: 800, color: 'text-green-600' },
+            { name: 'Medio', speed: 600, color: 'text-orange-500' },
+            { name: 'Alto', speed: 400, color: 'text-red-600' }
+        ];
+        let currentDifficultyIndex = 2; // Start at Alto
         let currentTimeIndex = 0;
         let TOTAL_TIME = timeOptions[currentTimeIndex];
         let score = 0;
@@ -202,7 +214,7 @@
         let timerInterval = null;
 
         // Game state
-        let truck = { x: 0, y: 0, element: null, hasPackage: false };
+        let truck = { x: 0, y: 0, element: null, hasPackage: false, justWrapped: false };
         let packageObj = { x: 0, y: 0, element: null };
         let house = { x: 0, y: 0, element: null };
         let warehouse = { x: 0, y: 0, element: null };
@@ -284,7 +296,8 @@
             placeObjectsForNewRound();
             
             render();
-            gameLoopInterval = setInterval(gameLoop, 400); 
+            const currentDifficulty = difficultyLevels[currentDifficultyIndex];
+            gameLoopInterval = setInterval(gameLoop, currentDifficulty.speed); 
         }
 
         // --- Object Placement ---
@@ -357,21 +370,33 @@
                 occupiedPositions.push(carPos);
                 
                 const carElement = createGameObject('🚗', null);
-                traffic.push({ ...carPos, element: carElement, dx: 0, dy: 0 });
+                traffic.push({ ...carPos, element: carElement, dx: 0, dy: 0, justWrapped: false });
             }
         }
 
         // --- Rendering ---
         function render() {
             const updatePosition = (obj) => {
+                if (!obj.element) return;
                 const sizePercentage = 100 / gridSize;
+
+                if (obj.justWrapped) {
+                    obj.element.style.transition = 'none';
+                }
+
                 obj.element.style.top = `${obj.y * sizePercentage}%`;
                 obj.element.style.left = `${obj.x * sizePercentage}%`;
+
+                if (obj.justWrapped) {
+                    obj.element.offsetHeight; // Force reflow
+                    obj.element.style.transition = '';
+                    obj.justWrapped = false;
+                }
             };
-            if(truck.element) updatePosition(truck);
-            if(packageObj.element) updatePosition(packageObj);
-            if(house.element) updatePosition(house);
-            if(warehouse.element) updatePosition(warehouse);
+            updatePosition(truck);
+            updatePosition(packageObj);
+            updatePosition(house);
+            updatePosition(warehouse);
             traffic.forEach(updatePosition);
         }
 
@@ -399,16 +424,20 @@
                 timerInterval = setInterval(updateTimer, 1000);
             }
             if (!gameActive) return;
+            
+            const currentX = truck.x;
+            const currentY = truck.y;
+            const newX = (currentX + dx + gridSize) % gridSize;
+            const newY = (currentY + dy + gridSize) % gridSize;
 
-            const newX = truck.x + dx;
-            const newY = truck.y + dy;
-            if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize && map[newY][newX] === 1) {
+            if (map[newY][newX] === 1) {
                 if (!firstMoveMade) firstMoveMade = true;
-                
                 isMoving = true;
                 
                 const atIntersection = isAtIntersection(truck.x, truck.y);
-                const cooldown = atIntersection ? 250 : 150; // Más lento en intersecciones
+                const cooldown = atIntersection ? 250 : 150;
+                
+                truck.justWrapped = (newX !== currentX + dx || newY !== currentY + dy);
                 
                 truck.x = newX;
                 truck.y = newY;
@@ -421,29 +450,46 @@
 
         function moveTraffic() {
             traffic.forEach(car => {
-                const possibleMoves = [];
-                const allDirections = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
+                const originalX = car.x;
+                const originalY = car.y;
 
-                allDirections.forEach(dir => {
-                    const nextX = car.x + dir.dx;
-                    const nextY = car.y + dir.dy;
-                    const isNotReversing = !(dir.dx === -car.dx && dir.dy === -car.dy);
-                    if (nextX >= 0 && nextX < gridSize && nextY >= 0 && nextY < gridSize && map[nextY][nextX] === 1 && isNotReversing) {
-                        possibleMoves.push(dir);
+                if (car.dx === 0 && car.dy === 0) {
+                    const directions = [{dx: 0, dy: 1}, {dx: 1, dy: 0}, {dx: 0, dy: -1}, {dx: -1, dy: 0}];
+                    const validDirections = directions.filter(dir => map[(originalY + dir.dy + gridSize) % gridSize][(originalX + dir.dx + gridSize) % gridSize] === 1);
+                    if(validDirections.length > 0) {
+                        const newDirection = validDirections[Math.floor(Math.random() * validDirections.length)];
+                        car.dx = newDirection.dx;
+                        car.dy = newDirection.dy;
                     }
-                });
-
-                let nextMove;
-                if (possibleMoves.length === 0) {
-                    nextMove = { dx: -car.dx, dy: -car.dy };
-                } else {
-                    nextMove = possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
                 }
+                
+                const straightX = originalX + car.dx;
+                const straightY = originalY + car.dy;
+                const wrappedStraightX = (straightX + gridSize) % gridSize;
+                const wrappedStraightY = (straightY + gridSize) % gridSize;
 
-                car.dx = nextMove.dx;
-                car.dy = nextMove.dy;
-                car.x += car.dx;
-                car.y += car.dy;
+                if (map[wrappedStraightY][wrappedStraightX] !== 1 || (isAtIntersection(originalX, originalY) && Math.random() < 0.5)) {
+                    const directions = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}];
+                    const possibleTurns = directions.filter(dir => !(dir.dx === -car.dx && dir.dy === -car.dy));
+                    const validTurns = possibleTurns.filter(dir => map[(originalY + dir.dy + gridSize) % gridSize][(originalX + dir.dx + gridSize) % gridSize] === 1);
+
+                    if (validTurns.length > 0) {
+                        const turn = validTurns[Math.floor(Math.random() * validTurns.length)];
+                        car.dx = turn.dx;
+                        car.dy = turn.dy;
+                    } else {
+                        car.dx = -car.dx;
+                        car.dy = -car.dy;
+                    }
+                }
+                
+                const finalX = originalX + car.dx;
+                const finalY = originalY + car.dy;
+                
+                car.justWrapped = finalX < 0 || finalX >= gridSize || finalY < 0 || finalY >= gridSize;
+                
+                car.x = (finalX + gridSize) % gridSize;
+                car.y = (finalY + gridSize) % gridSize;
             });
         }
 
@@ -529,6 +575,16 @@
             updateTimerDisplay();
         }
 
+        function changeDifficulty() {
+            if (gameActive || timerInterval) return;
+            
+            difficultyElement.classList.remove(difficultyLevels[currentDifficultyIndex].color);
+            currentDifficultyIndex = (currentDifficultyIndex + 1) % difficultyLevels.length;
+            const newDifficulty = difficultyLevels[currentDifficultyIndex];
+            difficultyElement.textContent = newDifficulty.name;
+            difficultyElement.classList.add(newDifficulty.color);
+        }
+
         // --- Event Listeners ---
         document.addEventListener('keydown', (e) => {
             switch (e.key) {
@@ -540,6 +596,7 @@
         });
 
         timerContainer.addEventListener('click', changeTime);
+        difficultyContainer.addEventListener('click', changeDifficulty);
         
         // --- Joystick Controls Logic ---
         const joystickContainer = document.getElementById('joystick-container');
